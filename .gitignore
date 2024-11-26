@@ -1,0 +1,10 @@
+.vscode/
+network.dSYM/
+test.dSYM/
+titanic.dSYM/
+temp.txt
+test.cpp
+titanic.cpp
+titanic
+network
+test
