@@ -24,7 +24,7 @@ const int STRUCTURE[LAYERS] = {10, 20, 10, 5, 2};
 const float LEAKY_FACTOR = 0.01f;
 const int INP_IGNORE = 120;
 const float LEARNING_RATE = 0.01f;
-const int ITERATIONS = 1000;
+const int ITERATIONS = 5000;
 std::string FILE_PATH = "TitanicData/";
 
 //Setup nn
