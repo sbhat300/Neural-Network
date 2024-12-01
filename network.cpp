@@ -19,12 +19,13 @@ float applyWeights(std::vector<Node>* prevNodes, std::vector<float>* weights);
 void readInput(std::vector<std::vector<float>>* data, std::vector<std::vector<float>>* survived);
 void testInputs(std::vector<std::vector<float>>* data, std::vector<std::vector<float>>* expected);
 
-const int LAYERS = 5;
-const int STRUCTURE[LAYERS] = {10, 20, 10, 5, 2};
+const int LAYERS = 4;
+const int STRUCTURE[LAYERS] = {10, 10, 5, 2};
 const float LEAKY_FACTOR = 0.01f;
 const int INP_IGNORE = 120;
 const float LEARNING_RATE = 0.01f;
-const int ITERATIONS = 5000;
+const float MOMENTUM_RATE = 0.9f;
+const int ITERATIONS = 1000;
 std::string FILE_PATH = "TitanicData/";
 
 //Setup nn
@@ -52,17 +53,25 @@ int main()
     std::random_device rd{};
     std::mt19937 gen{rd()}; 
     std::vector<std::vector<std::vector<float>>> gradients;
+    std::vector<std::vector<std::vector<float>>> momentum;
     gradients.resize(LAYERS);
+    momentum.resize(LAYERS);
     for(int i = 1; i < LAYERS; i++)
     {
         gradients[i].resize(STRUCTURE[i]);
+        momentum[i].resize(STRUCTURE[i]);
         std::normal_distribution nDist{0.0f, std::sqrt(2.0f / STRUCTURE[i - 1])};
         for(int j = 0; j < STRUCTURE[i]; j++)
         {
             layers[i][j].weights.resize(STRUCTURE[i - 1]);
             layers[i][j].activationDeriv.resize(STRUCTURE[i - 1]);
             gradients[i][j].resize(STRUCTURE[i - 1]);
-            for(int k = 0; k < STRUCTURE[i - 1]; k++) layers[i][j].weights[k] = nDist(gen);
+            momentum[i][j].resize(STRUCTURE[i - 1]);
+            for(int k = 0; k < STRUCTURE[i - 1]; k++) 
+            {
+                layers[i][j].weights[k] = nDist(gen);
+                momentum[i][j][k] = 0;
+            }
         }
     }
 
@@ -135,11 +144,16 @@ int main()
         if(it == 0) initmse = loss;
 
         //Apply gradient to weights
+        float dw = 0;
         for(int i = 1; i < LAYERS; i++) 
             for(int j = 0; j < STRUCTURE[i]; j++) 
                 for(int k = 0; k < STRUCTURE[i - 1]; k++)
-                    layers[i][j].weights[k] -= gradients[i][j][k] / (data.size() - INP_IGNORE)
-                                                * LEARNING_RATE;
+                {
+                    dw = -gradients[i][j][k] / (data.size() - INP_IGNORE)
+                        * LEARNING_RATE + momentum[i][j][k] * MOMENTUM_RATE;
+                    layers[i][j].weights[k] += dw;
+                    momentum[i][j][k] = dw;
+                }
         
     }
     std::cout << "\nInitial MSE: " << initmse << std::endl;
