@@ -18,15 +18,19 @@ float activate(float inp);
 float applyWeights(std::vector<Node>* prevNodes, std::vector<float>* weights);
 void readInput(std::vector<std::vector<float>>* data, std::vector<std::vector<float>>* survived);
 void testInputs(std::vector<std::vector<float>>* data, std::vector<std::vector<float>>* expected);
+void shuffle(std::vector<std::vector<float>>* data, std::vector<std::vector<float>>* expected);
 
-const int LAYERS = 4;
-const int STRUCTURE[LAYERS] = {10, 10, 5, 2};
+const int LAYERS = 5;
+const int STRUCTURE[LAYERS] = {10, 10, 5, 3, 2};
 const float LEAKY_FACTOR = 0.01f;
 const int INP_IGNORE = 120;
 const float LEARNING_RATE = 0.01f;
 const float MOMENTUM_RATE = 0.9f;
-const int ITERATIONS = 1000;
+const int ITERATIONS = 200000;
+const int BATCH_SIZE = 32; //Set to -1 if using entiire training data as batch
 std::string FILE_PATH = "TitanicData/";
+std::random_device rd{};
+std::vector<float> nums;
 
 //Setup nn
 std::vector<Node> layers[LAYERS];
@@ -43,14 +47,29 @@ int main()
     //Read input
     std::vector<std::vector<float>> data;
     std::vector<std::vector<float>> expected;
+    std::vector<std::vector<float>> testers;
+    std::vector<std::vector<float>> expectedTesters;
     readInput(&data, &expected);
-    std::cout << "Training data size: " << data.size() - INP_IGNORE << "\n\n";
+    for(int i = 0; i < data.size(); i++) nums.push_back(i);
+    shuffle(&data, &expected);
+    int n = data.size();
+    for(int i = n - 1; i >= n - INP_IGNORE; i--)
+    {
+        testers.push_back(data[i]);
+        expectedTesters.push_back(expected[i]);
+        data.pop_back();
+        expected.pop_back();
+    } 
+    int batchSize = BATCH_SIZE == -1 ? data.size() : BATCH_SIZE;
+    nums.clear();
+    for(int i = 0; i < data.size(); i++) nums.push_back(i);
+    std::cout << "Batch size: " << batchSize << "\n";
+    std::cout << "Training data size: " << data.size() << "\n\n";
 
     //Assign weights to each nodes with Kaiming initialization 
     //Also intialize corresponding weights 
     //(Node at layers[i][j].weights[k] = Node at gradients[i][j][k])
     //i = layer, j = neuron in layer, k = weight connecting neuron j to neuron k in prev layer
-    std::random_device rd{};
     std::mt19937 gen{rd()}; 
     std::vector<std::vector<std::vector<float>>> gradients;
     std::vector<std::vector<std::vector<float>>> momentum;
@@ -75,10 +94,11 @@ int main()
         }
     }
 
-    testInputs(&data, &expected);
+    testInputs(&testers, &expectedTesters);
 
     float loss;
     float initmse;
+    int batchPos = 0;
     for(int it = 0; it < ITERATIONS; it++)
     {
         loss = 0;
@@ -88,11 +108,11 @@ int main()
                 for(int k = 0; k < STRUCTURE[i - 1]; k++)
                     gradients[i][j][k] = 0;
         
-        for(int dat = 0; dat < data.size() - INP_IGNORE; dat++)
+        for(int dat = 0; dat < batchSize; dat++)
         {
             //Add input to network's first layer
             for(int neuron = 0; neuron < STRUCTURE[0]; neuron++) 
-                layers[0][neuron].activation = data[dat][neuron];
+                layers[0][neuron].activation = data[batchPos * batchSize + dat][neuron];
 
             //Forward propagation
             for(int l = 1; l < LAYERS; l++)
@@ -108,11 +128,13 @@ int main()
             float diff[STRUCTURE[LAYERS - 1]];
             for(int output = 0; output < STRUCTURE[LAYERS - 1]; output++) 
             {
-                diff[output] = layers[LAYERS - 1][output].activation - expected[dat][output];
+                diff[output] = layers[LAYERS - 1][output].activation - 
+                               expected[batchPos * batchSize + dat][output];
                 loss += diff[output] * diff[output];
             }
             
             //Back propagation
+            //Adjust outputs from output nodes
             for(int neuron = 0; neuron < STRUCTURE[LAYERS - 1]; neuron++)
             {
                 for(int weight = 0; weight < STRUCTURE[LAYERS - 2]; weight++)
@@ -124,6 +146,7 @@ int main()
                                                             * mult;
                 }
             }
+            //Propagate changes back to previous layers
             for(int l = LAYERS - 2; l > 0; l--)
             {
                 for(int neuron = 0; neuron < STRUCTURE[l]; neuron++)
@@ -140,7 +163,7 @@ int main()
                 }
             }
         }
-        loss /= data.size() - INP_IGNORE;
+        loss /= batchSize;
         if(it == 0) initmse = loss;
 
         //Apply gradient to weights
@@ -149,16 +172,26 @@ int main()
             for(int j = 0; j < STRUCTURE[i]; j++) 
                 for(int k = 0; k < STRUCTURE[i - 1]; k++)
                 {
-                    dw = -gradients[i][j][k] / (data.size() - INP_IGNORE)
+                    dw = -gradients[i][j][k] / batchSize
                         * LEARNING_RATE + momentum[i][j][k] * MOMENTUM_RATE;
                     layers[i][j].weights[k] += dw;
                     momentum[i][j][k] = dw;
                 }
-        
+
+        //Reshuffle batch if needed
+        if(BATCH_SIZE != -1)
+        {
+            batchPos++;
+            if((batchPos + 1) * BATCH_SIZE > data.size())
+            {
+                batchPos = 0;
+                shuffle(&data, &expected);
+            }
+        }
     }
     std::cout << "\nInitial MSE: " << initmse << std::endl;
 
-    testInputs(&data, &expected);
+    testInputs(&testers, &expectedTesters);
     
     std::cout << "MSE: " << loss << std::endl;
     std::cout << "\nTime Elapsed: " << time(NULL) - seed << " seconds" << std::endl;
@@ -179,6 +212,18 @@ float applyWeights(std::vector<Node>* prevNodes, std::vector<float>* weights)
     float sum = 0;
     for(int i = 0; i < prevNodes->size(); i++) sum += (*prevNodes)[i].activation * (*weights)[i];
     return sum;
+}
+void shuffle(std::vector<std::vector<float>>* data, std::vector<std::vector<float>>* expected)
+{
+    std::default_random_engine datarng(rd());
+    std::shuffle(nums.begin(), nums.end(), datarng);
+    std::vector<std::vector<float>> dataCopy = *data;
+    std::vector<std::vector<float>> expectedCopy = *expected;
+    for(int i = 0; i < nums.size(); i++)
+    {
+        (*data)[i] = dataCopy[nums[i]];
+        (*expected)[i] = expectedCopy[nums[i]];
+    }
 }
 void readInput(std::vector<std::vector<float>>* data, std::vector<std::vector<float>>* survived)
 {
@@ -314,7 +359,7 @@ void testInputs(std::vector<std::vector<float>>* data, std::vector<std::vector<f
     //Test Outputs:
     int right = 0;
     int counter = 0;
-    for(int i = data->size() - INP_IGNORE; i < data->size(); i++)
+    for(int i = 0; i < data->size(); i++)
     {
         counter++;
         for(int neuron = 0; neuron < STRUCTURE[0]; neuron++) 
