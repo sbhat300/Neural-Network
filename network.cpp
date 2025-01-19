@@ -20,13 +20,13 @@ void readInput(std::vector<std::vector<float>>* data, std::vector<std::vector<fl
 void testInputs(std::vector<std::vector<float>>* data, std::vector<std::vector<float>>* expected);
 void shuffle(std::vector<std::vector<float>>* data, std::vector<std::vector<float>>* expected);
 
-const int LAYERS = 5;
-const int STRUCTURE[LAYERS] = {10, 10, 5, 3, 2};
+const int LAYERS = 4;
+const int STRUCTURE[LAYERS] = {10, 10, 5, 2};
 const float LEAKY_FACTOR = 0.01f;
 const int INP_IGNORE = 120;
 const float LEARNING_RATE = 0.01f;
 const float MOMENTUM_RATE = 0.9f;
-const int ITERATIONS = 200000;
+const int ITERATIONS = 500000;
 const int BATCH_SIZE = 32; //Set to -1 if using entiire training data as batch
 std::string FILE_PATH = "TitanicData/";
 std::random_device rd{};
@@ -137,9 +137,9 @@ int main()
             //Adjust outputs from output nodes
             for(int neuron = 0; neuron < STRUCTURE[LAYERS - 1]; neuron++)
             {
+                float mult = reluDeriv(layers[LAYERS - 1][neuron].z) * 2 * diff[neuron] / STRUCTURE[LAYERS - 1];
                 for(int weight = 0; weight < STRUCTURE[LAYERS - 2]; weight++)
                 {
-                    float mult = reluDeriv(layers[LAYERS - 1][neuron].z) * 2 * diff[neuron];
                     layers[LAYERS - 1][neuron].activationDeriv[weight] = layers[LAYERS - 1][neuron].weights[weight]
                                                                         * mult;
                     gradients[LAYERS - 1][neuron][weight] += layers[LAYERS - 2][weight].activation 
@@ -153,7 +153,7 @@ int main()
                 {
                     float weightDerivSum = 0;
                     for(int next = 0; next < STRUCTURE[l + 1]; next++) 
-                            weightDerivSum += layers[l + 1][next].activationDeriv[neuron];
+                        weightDerivSum += layers[l + 1][next].activationDeriv[neuron];
                     for(int weight = 0; weight < STRUCTURE[l - 1]; weight++)
                     {
                         float mult = reluDeriv(layers[l][neuron].z) * weightDerivSum;
@@ -353,6 +353,7 @@ void readInput(std::vector<std::vector<float>>* data, std::vector<std::vector<fl
         (*data)[i][4] /= maxSib;
         (*data)[i][5] /= maxParch;
     }
+    input.close();
 }
 void testInputs(std::vector<std::vector<float>>* data, std::vector<std::vector<float>>* expected)
 {
